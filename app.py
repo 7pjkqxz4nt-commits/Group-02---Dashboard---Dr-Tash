@@ -3,156 +3,205 @@ import pandas as pd
 import plotly.express as px
 import re
 from datetime import datetime
-import os
 
-# ---------------- GLOBAL STYLING ----------------
+st.set_page_config(page_title="OSHE Master", layout="wide")
+
+# ---------------- GLOBAL STYLE ----------------
 st.markdown("""
-    <style>
-    .stApp {
-        background: linear-gradient(135deg, #1e3c72, #2a5298);
-        color: white;
-    }
-    [data-testid="stSidebar"] {
-        background: linear-gradient(135deg, #2a5298, #1e3c72);
-        color: white;
-    }
-    .stButton>button {
-        background-color: #FFD700;
-        color: black;
-        font-weight: bold;
-        border-radius: 8px;
-        padding: 8px 16px;
-    }
-    .stButton>button:hover {
-        background-color: #FFA500;
-        color: white;
-    }
-    h1, h2, h3 {
-        color: #FFD700;
-    }
-    .stDataFrame {
-        background-color: white;
-        color: black;
-    }
-    </style>
+<style>
+
+/* Background */
+.stApp {
+    background: linear-gradient(to right, #203a43, #2c5364);
+    color: white;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background: #1c2b36;
+}
+
+/* Cards */
+.card {
+    background: white;
+    color: black;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0px 5px 15px rgba(0,0,0,0.2);
+    margin-bottom: 20px;
+}
+
+/* Buttons */
+.stButton>button {
+    background-color: #f1c40f;
+    color: black;
+    font-weight: bold;
+    border-radius: 8px;
+}
+
+/* Header */
+.header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+/* Footer */
+.footer {
+    text-align: center;
+    margin-top: 40px;
+    font-size: 12px;
+    color: #ccc;
+}
+
+</style>
 """, unsafe_allow_html=True)
 
-# ---------------- LOGIN PAGE ----------------
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
+# ---------------- SESSION ----------------
+if "auth" not in st.session_state:
+    st.session_state.auth = False
 
-if not st.session_state.authenticated:
-    st.markdown('<h1 style="text-align:center;">🌟 OSHE Master – HSE Dashboard</h1>', unsafe_allow_html=True)
+# ---------------- LOGIN ----------------
+if not st.session_state.auth:
+
     st.markdown("""
-        <div style="text-align:center; font-size:16px; color:white;">
-        Prepared by:<br>
-        Dina Mohamed, Samar Zaiton, Mohamed Gamal, Ahmed Badawy,<br>
-        Hazem Hasem, Ahmed Abd Elreheem, Mohamed Abd Elrazkik, Amir Salem
-        </div>
+    <div style="width:400px;margin:auto;margin-top:100px;
+    background:white;color:black;padding:30px;border-radius:15px;text-align:center;">
+    
+    <img src="https://upload.wikimedia.org/wikipedia/en/0/0d/Alexandria_University_logo.png" width="80">
+    <h2>OSHE Master</h2>
+    <p>HSE Dashboard</p>
     """, unsafe_allow_html=True)
 
     user = st.text_input("Username")
     pwd = st.text_input("Password", type="password")
+
     if st.button("Login"):
-        if user == "admin" and pwd == "1234":  # Replace with secure auth
-            st.session_state.authenticated = True
-            st.success("Login successful!")
+        if user == "admin" and pwd == "1234":
+            st.session_state.auth = True
+            st.rerun()
         else:
             st.error("Invalid credentials")
+
+    st.markdown("""
+    <hr>
+    <b>Prepared by</b><br>
+    Dina Mohamed, Samar Zaiton, Mohamed Gamal,<br>
+    Ahmed Badawy, Hazem Hashem,<br>
+    Ahmed Abd Elrheem, Mohamed Abd Elrazek, Amir Salem
+    </div>
+    """, unsafe_allow_html=True)
+
     st.stop()
 
-# ---------------- SIDEBAR LOGOS ----------------
-col1, col2 = st.sidebar.columns([1,1])
-with col1:
-    if os.path.exists("logo.png"):
-        st.image("https://upload.wikimedia.org/wikipedia/en/0/0d/Alexandria_University_logo.png", width=120)
-with col2:
-    if os.path.exists("جامعة-الإسكندرية-مصر.png"):
-        st.image("جامعة-الإسكندرية-مصر.png", use_column_width=True)
+# ---------------- SIDEBAR ----------------
+st.sidebar.image(
+    "https://upload.wikimedia.org/wikipedia/en/0/0d/Alexandria_University_logo.png",
+    width=120
+)
 
-st.sidebar.markdown("""
-    <div style="text-align:center; color:white; font-size:14px; font-weight:bold;">
-    OSHE Master – HSE Dashboard<br>
-    University of Alexandria – Egypt
-    </div>
+st.sidebar.markdown("### 🛡️ OSHE Master")
+st.sidebar.markdown("HSE Dashboard")
+
+st.sidebar.markdown("---")
+file = st.sidebar.file_uploader("📂 Upload Data", type=["csv", "xlsx"])
+
+# ---------------- HEADER ----------------
+st.markdown("""
+<div class="header">
+<h1>🛡️ OSHE Master Dashboard</h1>
+<p>University of Alexandria - Egypt</p>
+</div>
 """, unsafe_allow_html=True)
 
-# ---------------- FILE UPLOAD ----------------
-st.sidebar.header("📂 Upload Data")
-file = st.sidebar.file_uploader("Upload Safety Data (CSV/Excel)", type=["csv","xlsx"])
 df = pd.DataFrame()
+
+# ---------------- LOAD DATA ----------------
 if file:
-    if file.name.endswith(".csv"):
-        df = pd.read_csv(file)
-    else:
-        df = pd.read_excel(file)
-    st.success("✅ Data uploaded successfully!")
-    st.write("Preview:", df.head())
+    df = pd.read_csv(file) if file.name.endswith(".csv") else pd.read_excel(file)
+
+    st.success("✅ Data uploaded successfully")
+
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.subheader("📂 Data Preview")
+    st.write(df.head())
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------- KPIs ----------------
 if not df.empty:
-    st.header("📊 KPIs")
-    st.metric("Total Hazards", len(df))
+
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.subheader("📊 KPIs")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Total Records", len(df))
+
     if "Severity" in df.columns:
-        st.write("Counts by Severity:", df["Severity"].value_counts())
+        col2.metric("Unique Severity", df["Severity"].nunique())
+
     if "Risk" in df.columns:
-        st.write("Counts by Risk:", df["Risk"].value_counts())
+        col3.metric("Unique Risk Levels", df["Risk"].nunique())
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------- CHARTS ----------------
 if not df.empty:
-    st.header("📈 Charts")
-    for col in df.select_dtypes(include="object").columns:
-        fig = px.histogram(df, x=col, title=f"Distribution of {col}", color_discrete_sequence=["#FFD700"])
+
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.subheader("📈 Charts")
+
+    for col in df.select_dtypes(include="object").columns[:3]:
+        fig = px.histogram(df, x=col, title=f"{col} Distribution",
+                           color_discrete_sequence=["#f1c40f"])
         st.plotly_chart(fig, use_container_width=True)
 
     if "Date" in df.columns:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-        # Pick a numeric column for y-axis
-        numeric_cols = df.select_dtypes(include="number").columns
-        if len(numeric_cols) > 0:
-            fig2 = px.line(df, x="Date", y=numeric_cols[0], title="Trend Over Time", color_discrete_sequence=["#FFA500"])
+        num_cols = df.select_dtypes(include="number").columns
+
+        if len(num_cols) > 0:
+            fig2 = px.line(df, x="Date", y=num_cols[0],
+                           title="Trend Over Time",
+                           color_discrete_sequence=["#e67e22"])
             st.plotly_chart(fig2, use_container_width=True)
 
-# ---------------- NATURAL LANGUAGE Q&A ----------------
-qa_input = st.text_input("💬 Ask a question about incidents")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-if file is not None and not df.empty and qa_input:
-    location_match = None
-    year_match = None
+# ---------------- Q&A ----------------
+query = st.text_input("💬 Ask a question about incidents")
+
+if not df.empty and query:
+
+    filtered_df = df.copy()
 
     if "Location" in df.columns:
         for loc in df["Location"].unique():
-            if str(loc).lower() in qa_input.lower():
-                location_match = loc
+            if str(loc).lower() in query.lower():
+                filtered_df = filtered_df[filtered_df["Location"] == loc]
 
-    year_match = re.findall(r"\b(20\d{2})\b", qa_input)
-    if year_match:
-        year_match = int(year_match[0])
-
-    filtered_df = df.copy()
-    if location_match:
-        filtered_df = filtered_df[filtered_df["Location"].str.contains(location_match, case=False)]
+    year_match = re.findall(r"\b(20\d{2})\b", query)
     if year_match and "Date" in df.columns:
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-        filtered_df = filtered_df[filtered_df["Date"].dt.year == year_match]
+        filtered_df = filtered_df[
+            pd.to_datetime(filtered_df["Date"], errors="coerce").dt.year == int(year_match[0])
+        ]
 
     if not filtered_df.empty:
-        st.subheader(f"Results for query: {qa_input}")
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.subheader("🔎 Results")
         st.dataframe(filtered_df)
-        if "Hazard Type" in filtered_df.columns:
-            fig = px.bar(filtered_df, x="Hazard Type", title="Hazards by Type", color_discrete_sequence=["#FFD700"])
-            st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("No matching records found.")
 
-# ---------------- FOOTER LOGOS ----------------
+        if "Hazard Type" in filtered_df.columns:
+            fig = px.bar(filtered_df, x="Hazard Type",
+                         color_discrete_sequence=["#f1c40f"])
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.warning("No matching results")
+
+# ---------------- FOOTER ----------------
 st.markdown("""
-    <hr style="border:1px solid #FFD700;">
-    <div style="text-align:center;">
-        <img src="logo.png" width="100">
-        <img src="جامعة-الإسكندرية-مصر.png" width="100" style="margin-left:20px;">
-        <p style="color:white; font-size:12px;">
-        © 2026 OSHE Master – HSE Dashboard | University of Alexandria
-        </p>
-    </div>
+<div class="footer">
+© 2026 OSHE Master – HSE Dashboard | University of Alexandria
+</div>
 """, unsafe_allow_html=True)
