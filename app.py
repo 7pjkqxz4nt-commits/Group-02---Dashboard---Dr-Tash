@@ -176,7 +176,71 @@ Question:
         if "Risk" in df.columns:
             st.write("High risk cases:",
                      df["Risk"].astype(str).str.contains("high", case=False).sum())
+st.subheader("🧠 Root Cause Analysis (High Risk Activities)")
 
+if not df.empty and "Risk" in df.columns:
+
+    high_risk_df = df[df["Risk"].astype(str).str.contains("high", case=False)]
+
+    if len(high_risk_df) > 0:
+
+        st.write(f"⚠️ High Risk Records: {len(high_risk_df)}")
+
+        if st.button("Analyze Root Causes"):
+
+            sample = high_risk_df.head(30).to_csv(index=False)
+
+            prompt = f"""
+You are an HSE incident investigator.
+
+Analyze ONLY high-risk activities from this dataset:
+
+{sample}
+
+Provide:
+1. Root Causes
+2. 5 Why Analysis
+3. Immediate Actions
+4. Long-term Corrective Actions
+"""
+
+            answer, ok = ask_ai(prompt)
+
+            if ok:
+                st.success(answer)
+            else:
+                st.warning(answer)
+
+                # fallback
+                if "Hazard Type" in high_risk_df.columns:
+                    st.write("Most common hazard:",
+                             high_risk_df["Hazard Type"].mode()[0])
+
+    else:
+        st.info("No high-risk activities detected")
+        st.subheader("📋 HSE Audit Checklist (Auto Generated)")
+
+if not df.empty and "Hazard Type" in df.columns:
+
+    hazards = df["Hazard Type"].dropna().unique()
+
+    checklist = []
+
+    for h in hazards:
+        checklist.append({
+            "Hazard": h,
+            "Inspection Item": f"Are control measures implemented for {h}?",
+            "Status": "⬜ Pending",
+            "Remarks": ""
+        })
+
+    checklist_df = pd.DataFrame(checklist)
+
+    st.dataframe(checklist_df)
+
+    # download checklist
+    csv = checklist_df.to_csv(index=False).encode("utf-8")
+    st.download_button("⬇️ Download Checklist", csv, "HSE_Checklist.csv")
 # ---------------- PDF REPORT ----------------
 if not df.empty and st.button("📄 Generate Report"):
 
