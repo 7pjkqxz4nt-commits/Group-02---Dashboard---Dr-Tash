@@ -9,6 +9,24 @@ st.set_page_config(layout="wide")
 # ---------------- OPENAI ----------------
 client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
 
+def ask_ai(prompt):
+    try:
+        res = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role":"user","content":prompt}]
+        )
+        return res.choices[0].message.content
+    except:
+        return "⚠️ AI unavailable"
+
+# ---------------- UI STYLE ----------------
+st.markdown("""
+<style>
+.stApp {background:#f5f7fb;}
+h1 {color:#1f4e79;}
+</style>
+""", unsafe_allow_html=True)
+
 # ---------------- LOGIN ----------------
 if "auth" not in st.session_state:
     st.session_state.auth = False
@@ -26,32 +44,32 @@ if not st.session_state.auth:
             st.error("Invalid credentials")
     st.stop()
 
-# ---------------- FILE ----------------
-file = st.sidebar.file_uploader("Upload Data", type=["csv","xlsx"])
+# ---------------- SIDEBAR ----------------
+st.sidebar.title("📂 Upload Data")
+file = st.sidebar.file_uploader("", type=["csv","xlsx"])
 
+# ---------------- LOAD DATA ----------------
 df = pd.DataFrame()
 
 if file:
-    if file.name.endswith(".csv"):
-        df = pd.read_csv(file)
-    else:
-        df = pd.read_excel(file, engine="openpyxl")
+    df = pd.read_csv(file) if file.name.endswith(".csv") else pd.read_excel(file, engine="openpyxl")
 
-# ---------------- SESSION FILTER ----------------
-if "risk_filter" not in st.session_state:
-    st.session_state.risk_filter = None
-
-if "hazard_filter" not in st.session_state:
-    st.session_state.hazard_filter = None
-
-# ---------------- APPLY FILTER ----------------
+# ---------------- FILTERS ----------------
 df_filtered = df.copy()
 
-if st.session_state.risk_filter:
-    df_filtered = df_filtered[df_filtered["Risk"].isin(st.session_state.risk_filter)]
+if not df.empty:
 
-if st.session_state.hazard_filter:
-    df_filtered = df_filtered[df_filtered["Hazard Type"].isin(st.session_state.hazard_filter)]
+    st.sidebar.markdown("### 🎛 Filters")
+
+    if "Risk" in df.columns:
+        risk = st.sidebar.multiselect("Risk", df["Risk"].unique())
+        if risk:
+            df_filtered = df_filtered[df_filtered["Risk"].isin(risk)]
+
+    if "Hazard Type" in df.columns:
+        haz = st.sidebar.multiselect("Hazard", df["Hazard Type"].unique())
+        if haz:
+            df_filtered = df_filtered[df_filtered["Hazard Type"].isin(haz)]
 
 # ---------------- KPI ----------------
 def detect(keys):
@@ -78,73 +96,65 @@ TRIR = (R*200000)/H if H else 0
 LTIFR = (LTI*1000000)/H if H else 0
 SR = (LD*200000)/H if H else 0
 
-# ---------------- DASHBOARD ----------------
+# ---------------- HEADER ----------------
 st.title("🛡️ OSHE Master Dashboard")
 
-c1,c2,c3 = st.columns(3)
-c1.metric("TRIR", round(TRIR,2))
-c2.metric("LTIFR", round(LTIFR,2))
-c3.metric("Severity", round(SR,2))
+# ---------------- TABS ----------------
+tab1, tab2, tab3 = st.tabs([
+    "📊 Executive",
+    "📈 Analysis",
+    "🤖 AI"
+])
 
-# ---------------- RISK CHART ----------------
-st.subheader("📊 Risk Distribution (Click to Filter)")
+# ================= TAB 1 =================
+with tab1:
 
-if "Risk" in df.columns:
+    st.subheader("📊 KPI Overview")
 
-    risk_counts = df["Risk"].value_counts().reset_index()
-    risk_counts.columns = ["Risk","Count"]
+    c1,c2,c3 = st.columns(3)
+    c1.metric("TRIR", round(TRIR,2))
+    c2.metric("LTIFR", round(LTIFR,2))
+    c3.metric("Severity", round(SR,2))
 
-    fig = px.bar(risk_counts, x="Risk", y="Count")
+    # Gauges
+    def gauge(v,t,m):
+        return go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=v,
+            title={'text':t},
+            gauge={'axis':{'range':[0,m]},
+                   'steps':[{'range':[0,m*0.3],'color':'green'},
+                            {'range':[m*0.3,m*0.7],'color':'yellow'},
+                            {'range':[m*0.7,m],'color':'red'}]}
+        ))
 
-    selected = st.plotly_chart(fig, use_container_width=True)
+    g1,g2,g3 = st.columns(3)
+    g1.plotly_chart(gauge(TRIR,"TRIR",5),use_container_width=True)
+    g2.plotly_chart(gauge(LTIFR,"LTIFR",3),use_container_width=True)
+    g3.plotly_chart(gauge(SR,"Severity",300),use_container_width=True)
 
-    selected_risk = st.multiselect(
-        "Select Risk (simulate click)",
-        options=risk_counts["Risk"].tolist()
-    )
+# ================= TAB 2 =================
+with tab2:
 
-    if selected_risk:
-        st.session_state.risk_filter = selected_risk
+    st.subheader("📈 Data Analysis")
 
-# ---------------- HAZARD CHART ----------------
-st.subheader("📊 Hazard Distribution (Click to Filter)")
+    if "Hazard Type" in df_filtered.columns:
+        st.plotly_chart(px.pie(df_filtered, names="Hazard Type"), use_container_width=True)
 
-if "Hazard Type" in df.columns:
+    if "Risk" in df_filtered.columns:
+        st.plotly_chart(px.histogram(df_filtered, x="Risk"), use_container_width=True)
 
-    hazard_counts = df["Hazard Type"].value_counts().reset_index()
-    hazard_counts.columns = ["Hazard","Count"]
+    if "Location" in df_filtered.columns and "Hazard Type" in df_filtered.columns:
+        heat = pd.crosstab(df_filtered["Location"], df_filtered["Hazard Type"])
+        st.plotly_chart(px.imshow(heat, text_auto=True), use_container_width=True)
 
-    fig2 = px.bar(hazard_counts, x="Hazard", y="Count")
-    st.plotly_chart(fig2, use_container_width=True)
+# ================= TAB 3 =================
+with tab3:
 
-    selected_hazard = st.multiselect(
-        "Select Hazard",
-        options=hazard_counts["Hazard"].tolist()
-    )
+    st.subheader("🤖 AI Assistant")
 
-    if selected_hazard:
-        st.session_state.hazard_filter = selected_hazard
+    q = st.text_input("Ask about your data")
 
-# ---------------- RESET ----------------
-if st.button("🔄 Reset Filters"):
-    st.session_state.risk_filter = None
-    st.session_state.hazard_filter = None
-
-# ---------------- AI ----------------
-st.subheader("🤖 AI Assistant")
-
-q = st.text_input("Ask about filtered data")
-
-if q and not df_filtered.empty:
-    sample = df_filtered.head(50).to_csv(index=False)
-
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[{"role":"user","content":f"Analyze:\n{sample}\nQuestion:{q}"}]
-    )
-
-    st.write(response.choices[0].message.content)
-
-# ---------------- DATA PREVIEW ----------------
-st.subheader("📄 Filtered Data")
-st.dataframe(df_filtered.head(50))
+    if q and not df_filtered.empty:
+        sample = df_filtered.head(50).to_csv(index=False)
+        st.write(ask_ai(f"Analyze:\n{sample}\nQuestion:{q}"))
