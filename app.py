@@ -9,8 +9,19 @@ import numpy as np
 
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="OSHE Master", layout="wide")
+from openai import OpenAI
 
 client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
+# 🔍 TEST AI CONNECTION (temporary)
+if st.button("Test AI"):
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role": "user", "content": "Say hello"}]
+        )
+        st.success(response.choices[0].message.content)
+    except Exception as e:
+        st.error(e)
 
 # ---------------- BRIGHT UI ----------------
 st.markdown("""
