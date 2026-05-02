@@ -96,32 +96,33 @@ file = st.sidebar.file_uploader("📂 Upload Data", type=["csv","xlsx"])
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("👤 User: Admin")
+df = pd.DataFrame()
 
-# ---------------- FILTERS ----------------
+if file:
+    if file.name.endswith(".csv"):
+        df = pd.read_csv(file)
+    else:
+        df = pd.read_excel(file, engine="openpyxl")
 
-df_filtered = df.copy()
+# ---------------- FILTERS (SAFE) ----------------
 
-if not df.empty:
+if 'df' not in locals() or df.empty:
+    df_filtered = pd.DataFrame()
+else:
+    df_filtered = df.copy()
 
     st.sidebar.markdown("### 🎛 Filters")
 
-    # -------- DATE FILTER --------
-    date_col = None
-    for col in df.columns:
-        if "date" in col.lower():
-            date_col = col
-            break
+    # -------- DATE --------
+    date_col = next((c for c in df.columns if "date" in c.lower()), None)
 
     if date_col:
-        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+        df_filtered[date_col] = pd.to_datetime(df_filtered[date_col], errors="coerce")
 
-        min_date = df[date_col].min()
-        max_date = df[date_col].max()
+        min_d = df_filtered[date_col].min()
+        max_d = df_filtered[date_col].max()
 
-        date_range = st.sidebar.date_input(
-            "Select Date Range",
-            [min_date, max_date]
-        )
+        date_range = st.sidebar.date_input("Date Range", [min_d, max_d])
 
         if len(date_range) == 2:
             df_filtered = df_filtered[
@@ -129,35 +130,25 @@ if not df.empty:
                 (df_filtered[date_col] <= pd.to_datetime(date_range[1]))
             ]
 
-    # -------- LOCATION FILTER --------
+    # -------- LOCATION --------
     if "Location" in df.columns:
-        locations = st.sidebar.multiselect(
-            "Select Location",
-            df["Location"].dropna().unique()
-        )
+        loc = st.sidebar.multiselect("Location", df["Location"].unique())
+        if loc:
+            df_filtered = df_filtered[df_filtered["Location"].isin(loc)]
 
-        if locations:
-            df_filtered = df_filtered[df_filtered["Location"].isin(locations)]
-
-    # -------- RISK FILTER --------
+    # -------- RISK --------
     if "Risk" in df.columns:
-        risks = st.sidebar.multiselect(
-            "Select Risk Level",
-            df["Risk"].dropna().unique()
-        )
+        risk = st.sidebar.multiselect("Risk", df["Risk"].unique())
+        if risk:
+            df_filtered = df_filtered[df_filtered["Risk"].isin(risk)]
 
-        if risks:
-            df_filtered = df_filtered[df_filtered["Risk"].isin(risks)]
-
-    # -------- HAZARD FILTER --------
+    # -------- HAZARD --------
     if "Hazard Type" in df.columns:
-        hazards = st.sidebar.multiselect(
-            "Select Hazard",
-            df["Hazard Type"].dropna().unique()
-        )
+        haz = st.sidebar.multiselect("Hazard", df["Hazard Type"].unique())
+        if haz:
+            df_filtered = df_filtered[df_filtered["Hazard Type"].isin(haz)]
 
-        if hazards:
-            df_filtered = df_filtered[df_filtered["Hazard Type"].isin(hazards)]
+    st.sidebar.write(f"Filtered rows: {len(df_filtered)}")
 
     # -------- SHOW FILTERED DATA --------
     st.sidebar.markdown(f"📊 Records after filter: {len(df_filtered)}")
