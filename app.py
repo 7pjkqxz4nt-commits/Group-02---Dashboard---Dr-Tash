@@ -1,76 +1,13 @@
-import streamlit as st
+import dash
+from dash import dcc, html, Input, Output
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from openai import OpenAI
-
-st.set_page_config(layout="wide")
-
-# ---------------- OPENAI ----------------
-client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
-
-def ask_ai(prompt):
-    try:
-        res = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role":"user","content":prompt}]
-        )
-        return res.choices[0].message.content
-    except:
-        return "⚠️ AI unavailable"
-
-# ---------------- STYLE ----------------
-st.markdown("""
-<style>
-.stApp {background:#f4f6f9;}
-h1 {color:#1f4e79;}
-.block-container {padding-top: 1rem;}
-</style>
-""", unsafe_allow_html=True)
-
-# ---------------- LOGIN ----------------
-if "auth" not in st.session_state:
-    st.session_state.auth = False
-
-if not st.session_state.auth:
-    st.title("🔐 Login")
-    u = st.text_input("Username")
-    p = st.text_input("Password", type="password")
-
-    if st.button("Login"):
-        if u == "admin" and p == "1234":
-            st.session_state.auth = True
-            st.rerun()
-        else:
-            st.error("Invalid credentials")
-    st.stop()
-
-# ---------------- SIDEBAR ----------------
-st.sidebar.title("📂 Upload Data")
-file = st.sidebar.file_uploader("", type=["csv","xlsx"])
 
 # ---------------- LOAD DATA ----------------
-df = pd.DataFrame()
-if file:
-    df = pd.read_csv(file) if file.name.endswith(".csv") else pd.read_excel(file, engine="openpyxl")
+df = pd.read_csv("your_file.csv")  # replace with your dataset
 
-# ---------------- FILTERS ----------------
-df_filtered = df.copy()
-
-if not df.empty:
-    st.sidebar.markdown("### 🎛 Filters")
-
-    if "Risk" in df.columns:
-        risk = st.sidebar.multiselect("Risk", df["Risk"].unique())
-        if risk:
-            df_filtered = df_filtered[df_filtered["Risk"].isin(risk)]
-
-    if "Hazard Type" in df.columns:
-        haz = st.sidebar.multiselect("Hazard", df["Hazard Type"].unique())
-        if haz:
-            df_filtered = df_filtered[df_filtered["Hazard Type"].isin(haz)]
-
-# ---------------- KPI CALC ----------------
+# ---------------- HELPER ----------------
 def detect(keys):
     for col in df.columns:
         for k in keys:
@@ -78,87 +15,138 @@ def detect(keys):
                 return col
     return None
 
-def safe(col):
-    return pd.to_numeric(df_filtered[col], errors="coerce").sum() if col else 0
+def safe(df, col):
+    return pd.to_numeric(df[col], errors="coerce").sum() if col else 0
 
+# ---------------- KPI CALC ----------------
 hours = detect(["hours"])
 incidents = detect(["incident"])
 lti = detect(["lost time"])
 lost_days = detect(["lost days"])
 
-H = safe(hours)
-R = safe(incidents)
-LTI = safe(lti)
-LD = safe(lost_days)
+def calculate_kpis(data):
+    H = safe(data, hours)
+    R = safe(data, incidents)
+    LTI = safe(data, lti)
+    LD = safe(data, lost_days)
 
-TRIR = (R*200000)/H if H else 0
-LTIFR = (LTI*1000000)/H if H else 0
-SR = (LD*200000)/H if H else 0
+    TRIR = (R*200000)/H if H else 0
+    LTIFR = (LTI*1000000)/H if H else 0
+    SR = (LD*200000)/H if H else 0
 
-# ---------------- HEADER ----------------
-st.title("🛡️ OSHE Master Dashboard")
+    return TRIR, LTIFR, SR
 
-# ---------------- TABS ----------------
-tab1, tab2, tab3 = st.tabs(["📊 Executive", "📈 Analysis", "🤖 AI"])
+# ---------------- APP ----------------
+app = dash.Dash(__name__)
 
-# ================= TAB 1 =================
-with tab1:
+# ---------------- LAYOUT ----------------
+app.layout = html.Div([
 
-    st.subheader("📊 KPI Overview")
+    # Sidebar
+    html.Div([
+        html.H3("📂 Filters"),
+        dcc.Dropdown(
+            id="risk_filter",
+            options=[{"label": i, "value": i} for i in df["Risk"].dropna().unique()],
+            multi=True,
+            placeholder="Select Risk"
+        ),
+        dcc.Dropdown(
+            id="hazard_filter",
+            options=[{"label": i, "value": i} for i in df["Hazard Type"].dropna().unique()],
+            multi=True,
+            placeholder="Select Hazard"
+        ),
+    ], style={
+        "width": "20%",
+        "display": "inline-block",
+        "verticalAlign": "top",
+        "padding": "20px",
+        "background": "#f4f6f9"
+    }),
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("TRIR", round(TRIR,2))
-    c2.metric("LTIFR", round(LTIFR,2))
-    c3.metric("Severity", round(SR,2))
+    # Main
+    html.Div([
 
-    st.markdown("---")
+        html.H1("🛡️ OSHE Master Dashboard"),
 
-    def gauge(v,t,m):
-        return go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=v,
-            title={'text':t},
-            gauge={
-                'axis':{'range':[0,m]},
-                'steps':[
-                    {'range':[0,m*0.3],'color':'green'},
-                    {'range':[m*0.3,m*0.7],'color':'yellow'},
-                    {'range':[m*0.7,m],'color':'red'}
-                ]
-            }
-        ))
+        # KPI Cards
+        html.Div(id="kpi_cards", style={"display": "flex", "gap": "20px"}),
 
-    g1, g2, g3 = st.columns(3)
-    g1.plotly_chart(gauge(TRIR,"TRIR",5),use_container_width=True)
-    g2.plotly_chart(gauge(LTIFR,"LTIFR",3),use_container_width=True)
-    g3.plotly_chart(gauge(SR,"Severity",300),use_container_width=True)
+        # Gauges
+        html.Div(id="gauges", style={"display": "flex"}),
 
-# ================= TAB 2 =================
-with tab2:
+        # Charts
+        html.Div([
+            dcc.Graph(id="risk_chart"),
+            dcc.Graph(id="hazard_chart")
+        ]),
 
-    st.subheader("📈 Data Analysis")
+    ], style={"width": "78%", "display": "inline-block", "padding": "20px"})
 
-    colA, colB = st.columns(2)
+])
 
-    if "Hazard Type" in df_filtered.columns:
-        with colA:
-            st.plotly_chart(px.pie(df_filtered, names="Hazard Type"), use_container_width=True)
+# ---------------- CALLBACK ----------------
+@app.callback(
+    Output("kpi_cards", "children"),
+    Output("gauges", "children"),
+    Output("risk_chart", "figure"),
+    Output("hazard_chart", "figure"),
+    Input("risk_filter", "value"),
+    Input("hazard_filter", "value"),
+)
+def update_dashboard(risk, hazard):
 
-    if "Risk" in df_filtered.columns:
-        with colB:
-            st.plotly_chart(px.histogram(df_filtered, x="Risk"), use_container_width=True)
+    dff = df.copy()
 
-    if "Location" in df_filtered.columns and "Hazard Type" in df_filtered.columns:
-        heat = pd.crosstab(df_filtered["Location"], df_filtered["Hazard Type"])
-        st.plotly_chart(px.imshow(heat, text_auto=True), use_container_width=True)
+    if risk:
+        dff = dff[dff["Risk"].isin(risk)]
 
-# ================= TAB 3 =================
-with tab3:
+    if hazard:
+        dff = dff[dff["Hazard Type"].isin(hazard)]
 
-    st.subheader("🤖 AI Assistant")
+    TRIR, LTIFR, SR = calculate_kpis(dff)
 
-    q = st.text_input("Ask about your data")
+    # KPI Cards
+    cards = [
+        html.Div([html.H4("TRIR"), html.H2(round(TRIR,2))], style=card_style),
+        html.Div([html.H4("LTIFR"), html.H2(round(LTIFR,2))], style=card_style),
+        html.Div([html.H4("Severity"), html.H2(round(SR,2))], style=card_style),
+    ]
 
-    if q and not df_filtered.empty:
-        sample = df_filtered.head(50).to_csv(index=False)
-        st.write(ask_ai(f"Analyze:\n{sample}\nQuestion:{q}"))
+    # Gauges
+    gauges = [
+        dcc.Graph(figure=gauge(TRIR, "TRIR", 5)),
+        dcc.Graph(figure=gauge(LTIFR, "LTIFR", 3)),
+        dcc.Graph(figure=gauge(SR, "Severity", 300)),
+    ]
+
+    # Charts
+    risk_fig = px.bar(dff["Risk"].value_counts().reset_index(),
+                      x="index", y="Risk", title="Risk Distribution")
+
+    hazard_fig = px.pie(dff, names="Hazard Type", title="Hazard Distribution")
+
+    return cards, gauges, risk_fig, hazard_fig
+
+# ---------------- STYLE ----------------
+card_style = {
+    "background": "white",
+    "padding": "20px",
+    "borderRadius": "10px",
+    "boxShadow": "0px 2px 6px rgba(0,0,0,0.1)",
+    "flex": "1",
+    "textAlign": "center"
+}
+
+def gauge(v,t,m):
+    return go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=v,
+        title={'text':t},
+        gauge={'axis':{'range':[0,m]}}
+    ))
+
+# ---------------- RUN ----------------
+if __name__ == "__main__":
+    app.run(debug=True)
