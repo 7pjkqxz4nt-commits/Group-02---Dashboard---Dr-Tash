@@ -64,6 +64,14 @@ if not st.session_state.authenticated:
         else:
             st.error("Invalid credentials")
     st.stop()
+# ---------------- SIDEBAR LOGO ----------------
+st.sidebar.image("logo.png", use_column_width=True)
+
+st.sidebar.markdown("""
+    <div style="text-align:center; color:white; font-size:14px; font-weight:bold;">
+    OSHE Master – HSE Dashboard
+    </div>
+""", unsafe_allow_html=True)
 
 # ---------------- FILE UPLOAD ----------------
 st.sidebar.header("📂 Upload Data")
