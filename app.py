@@ -19,11 +19,12 @@ def ask_ai(prompt):
     except:
         return "⚠️ AI unavailable"
 
-# ---------------- UI STYLE ----------------
+# ---------------- STYLE ----------------
 st.markdown("""
 <style>
-.stApp {background:#f5f7fb;}
+.stApp {background:#f4f6f9;}
 h1 {color:#1f4e79;}
+.block-container {padding-top: 1rem;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -50,7 +51,6 @@ file = st.sidebar.file_uploader("", type=["csv","xlsx"])
 
 # ---------------- LOAD DATA ----------------
 df = pd.DataFrame()
-
 if file:
     df = pd.read_csv(file) if file.name.endswith(".csv") else pd.read_excel(file, engine="openpyxl")
 
@@ -58,7 +58,6 @@ if file:
 df_filtered = df.copy()
 
 if not df.empty:
-
     st.sidebar.markdown("### 🎛 Filters")
 
     if "Risk" in df.columns:
@@ -71,7 +70,7 @@ if not df.empty:
         if haz:
             df_filtered = df_filtered[df_filtered["Hazard Type"].isin(haz)]
 
-# ---------------- KPI ----------------
+# ---------------- KPI CALC ----------------
 def detect(keys):
     for col in df.columns:
         for k in keys:
@@ -100,35 +99,36 @@ SR = (LD*200000)/H if H else 0
 st.title("🛡️ OSHE Master Dashboard")
 
 # ---------------- TABS ----------------
-tab1, tab2, tab3 = st.tabs([
-    "📊 Executive",
-    "📈 Analysis",
-    "🤖 AI"
-])
+tab1, tab2, tab3 = st.tabs(["📊 Executive", "📈 Analysis", "🤖 AI"])
 
 # ================= TAB 1 =================
 with tab1:
 
     st.subheader("📊 KPI Overview")
 
-    c1,c2,c3 = st.columns(3)
+    c1, c2, c3 = st.columns(3)
     c1.metric("TRIR", round(TRIR,2))
     c2.metric("LTIFR", round(LTIFR,2))
     c3.metric("Severity", round(SR,2))
 
-    # Gauges
+    st.markdown("---")
+
     def gauge(v,t,m):
         return go.Figure(go.Indicator(
             mode="gauge+number",
             value=v,
             title={'text':t},
-            gauge={'axis':{'range':[0,m]},
-                   'steps':[{'range':[0,m*0.3],'color':'green'},
-                            {'range':[m*0.3,m*0.7],'color':'yellow'},
-                            {'range':[m*0.7,m],'color':'red'}]}
+            gauge={
+                'axis':{'range':[0,m]},
+                'steps':[
+                    {'range':[0,m*0.3],'color':'green'},
+                    {'range':[m*0.3,m*0.7],'color':'yellow'},
+                    {'range':[m*0.7,m],'color':'red'}
+                ]
+            }
         ))
 
-    g1,g2,g3 = st.columns(3)
+    g1, g2, g3 = st.columns(3)
     g1.plotly_chart(gauge(TRIR,"TRIR",5),use_container_width=True)
     g2.plotly_chart(gauge(LTIFR,"LTIFR",3),use_container_width=True)
     g3.plotly_chart(gauge(SR,"Severity",300),use_container_width=True)
@@ -138,11 +138,15 @@ with tab2:
 
     st.subheader("📈 Data Analysis")
 
+    colA, colB = st.columns(2)
+
     if "Hazard Type" in df_filtered.columns:
-        st.plotly_chart(px.pie(df_filtered, names="Hazard Type"), use_container_width=True)
+        with colA:
+            st.plotly_chart(px.pie(df_filtered, names="Hazard Type"), use_container_width=True)
 
     if "Risk" in df_filtered.columns:
-        st.plotly_chart(px.histogram(df_filtered, x="Risk"), use_container_width=True)
+        with colB:
+            st.plotly_chart(px.histogram(df_filtered, x="Risk"), use_container_width=True)
 
     if "Location" in df_filtered.columns and "Hazard Type" in df_filtered.columns:
         heat = pd.crosstab(df_filtered["Location"], df_filtered["Hazard Type"])
