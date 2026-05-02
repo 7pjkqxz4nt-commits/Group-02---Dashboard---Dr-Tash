@@ -3,21 +3,19 @@ import pandas as pd
 import plotly.express as px
 import re
 from datetime import datetime
+import os
 
 # ---------------- GLOBAL STYLING ----------------
 st.markdown("""
     <style>
-    /* Global background */
     .stApp {
         background: linear-gradient(135deg, #1e3c72, #2a5298);
         color: white;
     }
-    /* Sidebar styling */
     [data-testid="stSidebar"] {
         background: linear-gradient(135deg, #2a5298, #1e3c72);
         color: white;
     }
-    /* Buttons */
     .stButton>button {
         background-color: #FFD700;
         color: black;
@@ -29,11 +27,9 @@ st.markdown("""
         background-color: #FFA500;
         color: white;
     }
-    /* Titles */
     h1, h2, h3 {
         color: #FFD700;
     }
-    /* Dataframe */
     .stDataFrame {
         background-color: white;
         color: black;
@@ -64,12 +60,15 @@ if not st.session_state.authenticated:
         else:
             st.error("Invalid credentials")
     st.stop()
+
 # ---------------- SIDEBAR LOGOS ----------------
 col1, col2 = st.sidebar.columns([1,1])
 with col1:
-    st.image("logo.png", use_column_width=True)  # OSHE Master logo
+    if os.path.exists("logo.png"):
+        st.image("logo.png", use_column_width=True)
 with col2:
-    st.image("جامعة-الإسكندرية-مصر.png", use_column_width=True)  # University logo
+    if os.path.exists("جامعة-الإسكندرية-مصر.png"):
+        st.image("جامعة-الإسكندرية-مصر.png", use_column_width=True)
 
 st.sidebar.markdown("""
     <div style="text-align:center; color:white; font-size:14px; font-weight:bold;">
@@ -77,18 +76,6 @@ st.sidebar.markdown("""
     University of Alexandria – Egypt
     </div>
 """, unsafe_allow_html=True)
-# ---------------- FOOTER LOGOS ----------------
-st.markdown("""
-    <hr style="border:1px solid #FFD700;">
-    <div style="text-align:center;">
-        <img src="logo.png" width="100">
-        <img src="جامعة-الإسكندرية-مصر.png" width="100" style="margin-left:20px;">
-        <p style="color:white; font-size:12px;">
-        © 2026 OSHE Master – HSE Dashboard | University of Alexandria
-        </p>
-    </div>
-""", unsafe_allow_html=True)
-
 
 # ---------------- FILE UPLOAD ----------------
 st.sidebar.header("📂 Upload Data")
@@ -120,8 +107,11 @@ if not df.empty:
 
     if "Date" in df.columns:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-        fig2 = px.line(df, x="Date", y=df.columns[1], title="Trend Over Time", color_discrete_sequence=["#FFA500"])
-        st.plotly_chart(fig2, use_container_width=True)
+        # Pick a numeric column for y-axis
+        numeric_cols = df.select_dtypes(include="number").columns
+        if len(numeric_cols) > 0:
+            fig2 = px.line(df, x="Date", y=numeric_cols[0], title="Trend Over Time", color_discrete_sequence=["#FFA500"])
+            st.plotly_chart(fig2, use_container_width=True)
 
 # ---------------- NATURAL LANGUAGE Q&A ----------------
 qa_input = st.text_input("💬 Ask a question about incidents")
@@ -130,13 +120,11 @@ if file is not None and not df.empty and qa_input:
     location_match = None
     year_match = None
 
-    # Location detection
     if "Location" in df.columns:
         for loc in df["Location"].unique():
             if str(loc).lower() in qa_input.lower():
                 location_match = loc
 
-    # Year detection
     year_match = re.findall(r"\b(20\d{2})\b", qa_input)
     if year_match:
         year_match = int(year_match[0])
@@ -145,6 +133,7 @@ if file is not None and not df.empty and qa_input:
     if location_match:
         filtered_df = filtered_df[filtered_df["Location"].str.contains(location_match, case=False)]
     if year_match and "Date" in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
         filtered_df = filtered_df[filtered_df["Date"].dt.year == year_match]
 
     if not filtered_df.empty:
@@ -156,10 +145,14 @@ if file is not None and not df.empty and qa_input:
     else:
         st.warning("No matching records found.")
 
-# ---------------- FOOTER ----------------
+# ---------------- FOOTER LOGOS ----------------
 st.markdown("""
     <hr style="border:1px solid #FFD700;">
-    <div style="text-align:center; color:white; font-size:12px;">
-    © 2026 OSHE Master – HSE Dashboard | Corporate Theme
+    <div style="text-align:center;">
+        <img src="logo.png" width="100">
+        <img src="جامعة-الإسكندرية-مصر.png" width="100" style="margin-left:20px;">
+        <p style="color:white; font-size:12px;">
+        © 2026 OSHE Master – HSE Dashboard | University of Alexandria
+        </p>
     </div>
 """, unsafe_allow_html=True)
