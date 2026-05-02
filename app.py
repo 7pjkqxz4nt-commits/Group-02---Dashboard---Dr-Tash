@@ -124,7 +124,74 @@ if not df.empty:
 
     if "Hazard Type" in df.columns:
         st.plotly_chart(px.pie(df,names="Hazard Type"), use_container_width=True)
+import plotly.graph_objects as go
 
+st.subheader("🎯 TRIR Gauge (Benchmarking)")
+
+fig = go.Figure(go.Indicator(
+    mode="gauge+number",
+    value=TRIR,
+    title={'text': "TRIR"},
+    gauge={
+        'axis': {'range': [0, 5]},
+        'bar': {'color': "darkblue"},
+        'steps': [
+            {'range': [0, 1], 'color': "green"},
+            {'range': [1, 3], 'color': "yellow"},
+            {'range': [3, 5], 'color': "red"}
+        ],
+    }
+))
+
+st.plotly_chart(fig, use_container_width=True)
+if "Hazard Type" in df.columns:
+    st.subheader("🥧 Hazard Distribution")
+
+    fig = px.pie(df, names="Hazard Type", hole=0.4)
+    st.plotly_chart(fig, use_container_width=True)
+if "Hazard Type" in df.columns:
+    st.subheader("📊 Top Hazards")
+
+    hazard_counts = df["Hazard Type"].value_counts().head(10)
+
+    fig = px.bar(
+        x=hazard_counts.values,
+        y=hazard_counts.index,
+        orientation='h',
+        labels={'x': 'Count', 'y': 'Hazard'}
+    )
+st.subheader("🕸 KPI Radar Chart")
+
+categories = ["TRIR", "LTIFR", "Severity"]
+values = [TRIR, LTIFR, SR]
+
+fig = go.Figure()
+
+fig.add_trace(go.Scatterpolar(
+    r=values,
+    theta=categories,
+    fill='toself',
+    name='Current'
+))
+
+fig.update_layout(
+    polar=dict(radialaxis=dict(visible=True)),
+    showlegend=False
+)
+
+st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)    
+if date_col and incident_col:
+
+    temp = df.copy()
+    temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
+
+    trend = temp.groupby(date_col)[incident_col].sum().reset_index()
+
+    st.subheader("📈 Incident Trend")
+
+    fig = px.line(trend, x=date_col, y=incident_col)
+    st.plotly_chart(fig, use_container_width=True)
 # ---------------- PREDICTION ----------------
 if not df.empty and date_col and incident_col:
 
