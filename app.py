@@ -103,6 +103,15 @@ if file:
         df = pd.read_csv(file)
     else:
         df = pd.read_excel(file, engine="openpyxl")
+    # ---------------- LOAD DATA ----------------
+if file:
+    try:
+        df = pd.read_csv(file) if file.name.endswith(".csv") else pd.read_excel(file, engine="openpyxl")
+        st.success("✅ Data uploaded")
+        st.write(df.head())
+    except Exception as e:
+        st.error(e)
+        st.stop()    
 
 # ---------------- FILTERS (SAFE) ----------------
 
@@ -155,15 +164,7 @@ else:
 
 else:
     df_filtered = df
-# ---------------- LOAD DATA ----------------
-if file:
-    try:
-        df = pd.read_csv(file) if file.name.endswith(".csv") else pd.read_excel(file, engine="openpyxl")
-        st.success("✅ Data uploaded")
-        st.write(df.head())
-    except Exception as e:
-        st.error(e)
-        st.stop()
+
 
 # ---------------- HELPERS ----------------
 def detect_column(keys):
