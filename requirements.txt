@@ -1,8 +1,5 @@
 streamlit
 pandas
 plotly
-matplotlib
-seaborn
-scikit-learn
-reportlab
-transformers
+fpdf
+openai
