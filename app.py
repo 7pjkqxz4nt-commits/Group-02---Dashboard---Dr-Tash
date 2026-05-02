@@ -5,20 +5,31 @@ from fpdf import FPDF
 import tempfile
 from openai import OpenAI
 from sklearn.linear_model import LinearRegression
-import numpy as np
 
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="OSHE Master", layout="wide")
-if question:
-    st.warning("⚠️ AI temporarily unavailable (quota exceeded)")
 
-# ---------------- BRIGHT UI ----------------
+# ---------------- OPENAI ----------------
+client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
+
+# ---------------- AI SAFE FUNCTION ----------------
+def ask_ai(prompt):
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content, True
+    except Exception as e:
+        if "quota" in str(e).lower():
+            return "⚠️ AI unavailable (quota exceeded). Showing basic insights.", False
+        return f"AI Error: {e}", False
+
+# ---------------- UI ----------------
 st.markdown("""
 <style>
 .stApp {background:#f5f7fb;color:#2c3e50;}
-section[data-testid="stSidebar"] {background:white;}
-.card {background:white;padding:20px;border-radius:10px;margin-bottom:15px;
-box-shadow:0px 2px 8px rgba(0,0,0,0.08);}
+.card {background:white;padding:20px;border-radius:10px;margin-bottom:15px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -27,13 +38,11 @@ if "auth" not in st.session_state:
     st.session_state.auth = False
 
 if not st.session_state.auth:
-
     st.markdown("""
     <div style="width:400px;margin:auto;margin-top:100px;background:white;
     padding:30px;border-radius:15px;text-align:center;">
     <img src="https://upload.wikimedia.org/wikipedia/en/0/0d/Alexandria_University_logo.png" width="80">
     <h2>OSHE Master</h2>
-    <p>HSE KPI Dashboard</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -46,7 +55,6 @@ if not st.session_state.auth:
             st.rerun()
         else:
             st.error("Invalid credentials")
-
     st.stop()
 
 # ---------------- SIDEBAR ----------------
@@ -66,19 +74,16 @@ if file:
             df = pd.read_excel(file, engine="openpyxl")
 
         st.success("✅ Data uploaded")
-
-        st.markdown('<div class="card">', unsafe_allow_html=True)
         st.write(df.head())
-        st.markdown('</div>', unsafe_allow_html=True)
 
     except Exception as e:
         st.error(e)
         st.stop()
 
-# ---------------- SMART COLUMN DETECTION ----------------
-def detect_column(keywords):
+# ---------------- DETECTION ----------------
+def detect_column(keys):
     for col in df.columns:
-        for k in keywords:
+        for k in keys:
             if k.lower() in col.lower():
                 return col
     return None
@@ -103,17 +108,11 @@ if not df.empty:
     LTIFR = (LTI * 1000000) / H if H else 0
     SR = (Lost_days * 200000) / H if H else 0
 
-    def benchmark(v,g,a):
-        if v <= g: return "🟢 Good"
-        elif v <= a: return "🟡 Avg"
-        else: return "🔴 Poor"
-
     st.subheader("📊 KPIs")
-
     c1,c2,c3 = st.columns(3)
-    c1.metric("TRIR", round(TRIR,2), benchmark(TRIR,1,3))
-    c2.metric("LTIFR", round(LTIFR,2), benchmark(LTIFR,0.5,1.5))
-    c3.metric("Severity", round(SR,2), benchmark(SR,50,200))
+    c1.metric("TRIR", round(TRIR,2))
+    c2.metric("LTIFR", round(LTIFR,2))
+    c3.metric("Severity", round(SR,2))
 
 # ---------------- CHARTS ----------------
 if not df.empty:
@@ -126,22 +125,26 @@ if not df.empty:
     if "Hazard Type" in df.columns:
         st.plotly_chart(px.pie(df,names="Hazard Type"), use_container_width=True)
 
-# ---------------- ML PREDICTION ----------------
+# ---------------- PREDICTION ----------------
 if not df.empty and date_col and incident_col:
 
-    temp = df.copy()
-    temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
-    temp = temp.dropna()
+    try:
+        temp = df.copy()
+        temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
+        temp = temp.dropna()
 
-    temp["t"] = range(len(temp))
+        if len(temp) > 2:
+            temp["t"] = range(len(temp))
 
-    model = LinearRegression()
-    model.fit(temp[["t"]], temp[incident_col])
+            model = LinearRegression()
+            model.fit(temp[["t"]], temp[incident_col])
 
-    pred = model.predict([[len(temp)+1]])[0]
+            pred = model.predict([[len(temp)+1]])[0]
 
-    st.subheader("📉 Prediction")
-    st.write(f"Next incidents prediction: {round(pred,2)}")
+            st.subheader("📉 Prediction")
+            st.write(f"Next incidents: {round(pred,2)}")
+    except:
+        pass
 
 # ---------------- AI ASSISTANT ----------------
 st.subheader("🤖 AI Assistant")
@@ -155,71 +158,46 @@ if question and not df.empty:
     prompt = f"""
 You are an HSE expert.
 
-KPIs:
-TRIR: {TRIR}
-LTIFR: {LTIFR}
-Severity: {SR}
-
 Dataset:
 {sample}
 
 Question:
 {question}
-
-Give insights and recommendations.
 """
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role":"user","content":prompt}]
-        )
-        st.write(response.choices[0].message.content)
+    answer, ok = ask_ai(prompt)
 
-    except Exception as e:
-        st.error(e)
+    if ok:
+        st.success(answer)
+    else:
+        st.warning(answer)
 
-# ---------------- AI PDF REPORT ----------------
-if not df.empty and st.button("📄 Generate AI Inspection Report"):
+        # fallback insights
+        if "Risk" in df.columns:
+            st.write("High risk cases:",
+                     df["Risk"].astype(str).str.contains("high", case=False).sum())
 
-    with st.spinner("Generating report..."):
+# ---------------- PDF REPORT ----------------
+if not df.empty and st.button("📄 Generate Report"):
 
-        sample = df.head(50).to_csv(index=False)
+    sample = df.head(50).to_csv(index=False)
 
-        prompt = f"""
-Generate a professional HSE inspection report.
+    prompt = f"Generate HSE report:\n{sample}"
 
-KPIs:
-TRIR: {TRIR}
-LTIFR: {LTIFR}
-Severity: {SR}
+    report, ok = ask_ai(prompt)
 
-Dataset:
-{sample}
+    if not ok:
+        report = "Basic report: Improve safety controls."
 
-Include summary, findings, risks, causes, recommendations.
-"""
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=10)
 
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[{"role":"user","content":prompt}]
-            )
+    for line in report.split("\n"):
+        pdf.multi_cell(0,6,line)
 
-            report = response.choices[0].message.content
+    path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
+    pdf.output(path)
 
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", size=10)
-
-            for line in report.split("\n"):
-                pdf.multi_cell(0,6,line)
-
-            file_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
-            pdf.output(file_path)
-
-            with open(file_path, "rb") as f:
-                st.download_button("Download Report", f, "HSE_Report.pdf")
-
-        except Exception as e:
-            st.error(e)
+    with open(path,"rb") as f:
+        st.download_button("Download Report", f, "report.pdf")
