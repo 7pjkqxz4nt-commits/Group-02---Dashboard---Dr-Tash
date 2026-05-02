@@ -1,13 +1,109 @@
-import dash
-from dash import dcc, html, Input, Output
+import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from openai import OpenAI
+
+# ---------------- CONFIG ----------------
+st.set_page_config(page_title="OSHE Master", layout="wide")
+
+# ---------------- OPENAI ----------------
+client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
+
+def ask_ai(prompt):
+    try:
+        res = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role":"user","content":prompt}]
+        )
+        return res.choices[0].message.content
+    except:
+        return "⚠️ AI unavailable or quota exceeded"
+
+# ---------------- STYLE (POWER BI LOOK) ----------------
+st.markdown("""
+<style>
+.stApp {
+    background-color: #f4f6f9;
+}
+
+/* KPI Cards */
+.kpi-card {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0px 2px 8px rgba(0,0,0,0.08);
+    text-align: center;
+}
+
+/* Section Titles */
+h1, h2, h3 {
+    color: #1f4e79;
+}
+
+/* Remove extra padding */
+.block-container {
+    padding-top: 1rem;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------- LOGIN ----------------
+if "auth" not in st.session_state:
+    st.session_state.auth = False
+
+if not st.session_state.auth:
+    st.title("🔐 Login")
+
+    user = st.text_input("Username")
+    pwd = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if user == "admin" and pwd == "1234":
+            st.session_state.auth = True
+            st.rerun()
+        else:
+            st.error("Invalid credentials")
+
+    st.stop()
+
+# ---------------- SIDEBAR ----------------
+st.sidebar.image("https://upload.wikimedia.org/wikipedia/en/0/0d/Alexandria_University_logo.png", width=120)
+st.sidebar.markdown("## 📂 Upload Data")
+
+file = st.sidebar.file_uploader("", type=["csv","xlsx"])
 
 # ---------------- LOAD DATA ----------------
-df = pd.read_csv("your_file.csv")  # replace with your dataset
+df = pd.DataFrame()
 
-# ---------------- HELPER ----------------
+if file:
+    try:
+        df = pd.read_csv(file) if file.name.endswith(".csv") else pd.read_excel(file, engine="openpyxl")
+        st.sidebar.success("Data loaded")
+    except Exception as e:
+        st.error(e)
+        st.stop()
+
+# ---------------- FILTERS ----------------
+df_filtered = df.copy()
+
+if not df.empty:
+
+    st.sidebar.markdown("### 🎛 Filters")
+
+    if "Risk" in df.columns:
+        risk = st.sidebar.multiselect("Risk", df["Risk"].dropna().unique())
+        if risk:
+            df_filtered = df_filtered[df_filtered["Risk"].isin(risk)]
+
+    if "Hazard Type" in df.columns:
+        haz = st.sidebar.multiselect("Hazard", df["Hazard Type"].dropna().unique())
+        if haz:
+            df_filtered = df_filtered[df_filtered["Hazard Type"].isin(haz)]
+
+    st.sidebar.markdown(f"📊 Records: {len(df_filtered)}")
+
+# ---------------- KPI FUNCTIONS ----------------
 def detect(keys):
     for col in df.columns:
         for k in keys:
@@ -15,138 +111,114 @@ def detect(keys):
                 return col
     return None
 
-def safe(df, col):
-    return pd.to_numeric(df[col], errors="coerce").sum() if col else 0
+def safe(col):
+    return pd.to_numeric(df_filtered[col], errors="coerce").sum() if col else 0
 
-# ---------------- KPI CALC ----------------
 hours = detect(["hours"])
 incidents = detect(["incident"])
 lti = detect(["lost time"])
 lost_days = detect(["lost days"])
 
-def calculate_kpis(data):
-    H = safe(data, hours)
-    R = safe(data, incidents)
-    LTI = safe(data, lti)
-    LD = safe(data, lost_days)
+H = safe(hours)
+R = safe(incidents)
+LTI = safe(lti)
+LD = safe(lost_days)
 
-    TRIR = (R*200000)/H if H else 0
-    LTIFR = (LTI*1000000)/H if H else 0
-    SR = (LD*200000)/H if H else 0
+TRIR = (R*200000)/H if H else 0
+LTIFR = (LTI*1000000)/H if H else 0
+SR = (LD*200000)/H if H else 0
 
-    return TRIR, LTIFR, SR
+# ---------------- HEADER ----------------
+st.title("🛡️ OSHE Master Dashboard")
 
-# ---------------- APP ----------------
-app = dash.Dash(__name__)
-
-# ---------------- LAYOUT ----------------
-app.layout = html.Div([
-
-    # Sidebar
-    html.Div([
-        html.H3("📂 Filters"),
-        dcc.Dropdown(
-            id="risk_filter",
-            options=[{"label": i, "value": i} for i in df["Risk"].dropna().unique()],
-            multi=True,
-            placeholder="Select Risk"
-        ),
-        dcc.Dropdown(
-            id="hazard_filter",
-            options=[{"label": i, "value": i} for i in df["Hazard Type"].dropna().unique()],
-            multi=True,
-            placeholder="Select Hazard"
-        ),
-    ], style={
-        "width": "20%",
-        "display": "inline-block",
-        "verticalAlign": "top",
-        "padding": "20px",
-        "background": "#f4f6f9"
-    }),
-
-    # Main
-    html.Div([
-
-        html.H1("🛡️ OSHE Master Dashboard"),
-
-        # KPI Cards
-        html.Div(id="kpi_cards", style={"display": "flex", "gap": "20px"}),
-
-        # Gauges
-        html.Div(id="gauges", style={"display": "flex"}),
-
-        # Charts
-        html.Div([
-            dcc.Graph(id="risk_chart"),
-            dcc.Graph(id="hazard_chart")
-        ]),
-
-    ], style={"width": "78%", "display": "inline-block", "padding": "20px"})
-
+# ---------------- TABS ----------------
+tab1, tab2, tab3 = st.tabs([
+    "📊 Executive Dashboard",
+    "📈 Analysis",
+    "🤖 AI Insights"
 ])
 
-# ---------------- CALLBACK ----------------
-@app.callback(
-    Output("kpi_cards", "children"),
-    Output("gauges", "children"),
-    Output("risk_chart", "figure"),
-    Output("hazard_chart", "figure"),
-    Input("risk_filter", "value"),
-    Input("hazard_filter", "value"),
-)
-def update_dashboard(risk, hazard):
+# ================= TAB 1 =================
+with tab1:
 
-    dff = df.copy()
+    st.subheader("📊 KPI Overview")
 
-    if risk:
-        dff = dff[dff["Risk"].isin(risk)]
+    col1, col2, col3 = st.columns(3)
 
-    if hazard:
-        dff = dff[dff["Hazard Type"].isin(hazard)]
+    col1.markdown(f"""
+    <div class="kpi-card">
+        <h4>TRIR</h4>
+        <h2>{round(TRIR,2)}</h2>
+    </div>
+    """, unsafe_allow_html=True)
 
-    TRIR, LTIFR, SR = calculate_kpis(dff)
+    col2.markdown(f"""
+    <div class="kpi-card">
+        <h4>LTIFR</h4>
+        <h2>{round(LTIFR,2)}</h2>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # KPI Cards
-    cards = [
-        html.Div([html.H4("TRIR"), html.H2(round(TRIR,2))], style=card_style),
-        html.Div([html.H4("LTIFR"), html.H2(round(LTIFR,2))], style=card_style),
-        html.Div([html.H4("Severity"), html.H2(round(SR,2))], style=card_style),
-    ]
+    col3.markdown(f"""
+    <div class="kpi-card">
+        <h4>Severity</h4>
+        <h2>{round(SR,2)}</h2>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
 
     # Gauges
-    gauges = [
-        dcc.Graph(figure=gauge(TRIR, "TRIR", 5)),
-        dcc.Graph(figure=gauge(LTIFR, "LTIFR", 3)),
-        dcc.Graph(figure=gauge(SR, "Severity", 300)),
-    ]
+    def gauge(v,t,m):
+        return go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=v,
+            title={'text':t},
+            gauge={
+                'axis':{'range':[0,m]},
+                'steps':[
+                    {'range':[0,m*0.3],'color':'green'},
+                    {'range':[m*0.3,m*0.7],'color':'yellow'},
+                    {'range':[m*0.7,m],'color':'red'}
+                ]
+            }
+        ))
 
-    # Charts
-    risk_fig = px.bar(dff["Risk"].value_counts().reset_index(),
-                      x="index", y="Risk", title="Risk Distribution")
+    g1, g2, g3 = st.columns(3)
+    g1.plotly_chart(gauge(TRIR,"TRIR",5), use_container_width=True)
+    g2.plotly_chart(gauge(LTIFR,"LTIFR",3), use_container_width=True)
+    g3.plotly_chart(gauge(SR,"Severity",300), use_container_width=True)
 
-    hazard_fig = px.pie(dff, names="Hazard Type", title="Hazard Distribution")
+# ================= TAB 2 =================
+with tab2:
 
-    return cards, gauges, risk_fig, hazard_fig
+    st.subheader("📈 Data Analysis")
 
-# ---------------- STYLE ----------------
-card_style = {
-    "background": "white",
-    "padding": "20px",
-    "borderRadius": "10px",
-    "boxShadow": "0px 2px 6px rgba(0,0,0,0.1)",
-    "flex": "1",
-    "textAlign": "center"
-}
+    colA, colB = st.columns(2)
 
-def gauge(v,t,m):
-    return go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=v,
-        title={'text':t},
-        gauge={'axis':{'range':[0,m]}}
-    ))
+    if "Hazard Type" in df_filtered.columns:
+        with colA:
+            st.plotly_chart(px.pie(df_filtered, names="Hazard Type", title="Hazard Distribution"),
+                            use_container_width=True)
 
-# ---------------- RUN ----------------
-if __name__ == "__main__":
-    app.run(debug=True)
+    if "Risk" in df_filtered.columns:
+        with colB:
+            st.plotly_chart(px.histogram(df_filtered, x="Risk", title="Risk Distribution"),
+                            use_container_width=True)
+
+    if "Location" in df_filtered.columns and "Hazard Type" in df_filtered.columns:
+        heat = pd.crosstab(df_filtered["Location"], df_filtered["Hazard Type"])
+        st.plotly_chart(px.imshow(heat, text_auto=True, title="Risk Heatmap"),
+                        use_container_width=True)
+
+# ================= TAB 3 =================
+with tab3:
+
+    st.subheader("🤖 AI Assistant")
+
+    q = st.text_input("Ask about your data")
+
+    if q and not df_filtered.empty:
+        sample = df_filtered.head(50).to_csv(index=False)
+        answer = ask_ai(f"Analyze:\n{sample}\nQuestion:{q}")
+        st.success(answer)
