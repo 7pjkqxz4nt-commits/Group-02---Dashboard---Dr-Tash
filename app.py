@@ -2,25 +2,12 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from fpdf import FPDF
-import tempfile
 from openai import OpenAI
-from sklearn.linear_model import LinearRegression
 
-st.set_page_config(page_title="OSHE Master", layout="wide")
+st.set_page_config(layout="wide")
 
 # ---------------- OPENAI ----------------
 client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
-
-def ask_ai(prompt):
-    try:
-        res = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role":"user","content":prompt}]
-        )
-        return res.choices[0].message.content, True
-    except:
-        return "⚠️ AI unavailable", False
 
 # ---------------- LOGIN ----------------
 if "auth" not in st.session_state:
@@ -39,10 +26,9 @@ if not st.session_state.auth:
             st.error("Invalid credentials")
     st.stop()
 
-# ---------------- SIDEBAR ----------------
+# ---------------- FILE ----------------
 file = st.sidebar.file_uploader("Upload Data", type=["csv","xlsx"])
 
-# ---------------- LOAD DATA ----------------
 df = pd.DataFrame()
 
 if file:
@@ -51,22 +37,21 @@ if file:
     else:
         df = pd.read_excel(file, engine="openpyxl")
 
-# ---------------- SESSION FILTERS (DRILL DOWN) ----------------
-if "selected_risk" not in st.session_state:
-    st.session_state.selected_risk = None
+# ---------------- SESSION FILTER ----------------
+if "risk_filter" not in st.session_state:
+    st.session_state.risk_filter = None
 
-if "selected_hazard" not in st.session_state:
-    st.session_state.selected_hazard = None
+if "hazard_filter" not in st.session_state:
+    st.session_state.hazard_filter = None
 
-# ---------------- BASE FILTER ----------------
+# ---------------- APPLY FILTER ----------------
 df_filtered = df.copy()
 
-# Apply drill-down filters
-if st.session_state.selected_risk:
-    df_filtered = df_filtered[df_filtered["Risk"] == st.session_state.selected_risk]
+if st.session_state.risk_filter:
+    df_filtered = df_filtered[df_filtered["Risk"].isin(st.session_state.risk_filter)]
 
-if st.session_state.selected_hazard:
-    df_filtered = df_filtered[df_filtered["Hazard Type"] == st.session_state.selected_hazard]
+if st.session_state.hazard_filter:
+    df_filtered = df_filtered[df_filtered["Hazard Type"].isin(st.session_state.hazard_filter)]
 
 # ---------------- KPI ----------------
 def detect(keys):
@@ -83,7 +68,6 @@ hours = detect(["hours"])
 incidents = detect(["incident"])
 lti = detect(["lost time"])
 lost_days = detect(["lost days"])
-date_col = detect(["date"])
 
 H = safe(hours)
 R = safe(incidents)
@@ -102,25 +86,8 @@ c1.metric("TRIR", round(TRIR,2))
 c2.metric("LTIFR", round(LTIFR,2))
 c3.metric("Severity", round(SR,2))
 
-# ---------------- GAUGE ----------------
-def gauge(v,t,m):
-    return go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=v,
-        title={'text':t},
-        gauge={'axis':{'range':[0,m]},
-               'steps':[{'range':[0,m*0.3],'color':'green'},
-                        {'range':[m*0.3,m*0.7],'color':'yellow'},
-                        {'range':[m*0.7,m],'color':'red'}]}
-    ))
-
-g1,g2,g3 = st.columns(3)
-g1.plotly_chart(gauge(TRIR,"TRIR",5),use_container_width=True)
-g2.plotly_chart(gauge(LTIFR,"LTIFR",3),use_container_width=True)
-g3.plotly_chart(gauge(SR,"Severity",300),use_container_width=True)
-
-# ---------------- DRILL-DOWN CHART ----------------
-st.subheader("📊 Risk Drill-Down")
+# ---------------- RISK CHART ----------------
+st.subheader("📊 Risk Distribution (Click to Filter)")
 
 if "Risk" in df.columns:
 
@@ -131,54 +98,53 @@ if "Risk" in df.columns:
 
     selected = st.plotly_chart(fig, use_container_width=True)
 
-    # Buttons for drill-down (Streamlit limitation workaround)
-    for r in risk_counts["Risk"]:
-        if st.button(f"Filter: {r}"):
-            st.session_state.selected_risk = r
+    selected_risk = st.multiselect(
+        "Select Risk (simulate click)",
+        options=risk_counts["Risk"].tolist()
+    )
 
-# ---------------- HAZARD DRILL ----------------
-st.subheader("📊 Hazard Drill-Down")
+    if selected_risk:
+        st.session_state.risk_filter = selected_risk
+
+# ---------------- HAZARD CHART ----------------
+st.subheader("📊 Hazard Distribution (Click to Filter)")
 
 if "Hazard Type" in df.columns:
 
-    haz_counts = df["Hazard Type"].value_counts().reset_index()
-    haz_counts.columns = ["Hazard","Count"]
+    hazard_counts = df["Hazard Type"].value_counts().reset_index()
+    hazard_counts.columns = ["Hazard","Count"]
 
-    fig2 = px.bar(haz_counts, x="Hazard", y="Count")
+    fig2 = px.bar(hazard_counts, x="Hazard", y="Count")
     st.plotly_chart(fig2, use_container_width=True)
 
-    for h in haz_counts["Hazard"]:
-        if st.button(f"Hazard: {h}"):
-            st.session_state.selected_hazard = h
+    selected_hazard = st.multiselect(
+        "Select Hazard",
+        options=hazard_counts["Hazard"].tolist()
+    )
+
+    if selected_hazard:
+        st.session_state.hazard_filter = selected_hazard
 
 # ---------------- RESET ----------------
 if st.button("🔄 Reset Filters"):
-    st.session_state.selected_risk = None
-    st.session_state.selected_hazard = None
+    st.session_state.risk_filter = None
+    st.session_state.hazard_filter = None
 
 # ---------------- AI ----------------
-st.subheader("🤖 AI")
+st.subheader("🤖 AI Assistant")
 
-q = st.text_input("Ask")
+q = st.text_input("Ask about filtered data")
 
 if q and not df_filtered.empty:
-    sample=df_filtered.head(50).to_csv(index=False)
-    ans,ok=ask_ai("Analyze:\n"+sample+"\nQ:"+q)
-    st.write(ans)
+    sample = df_filtered.head(50).to_csv(index=False)
 
-# ---------------- ROOT CAUSE ----------------
-if "Risk" in df_filtered.columns:
-    hr=df_filtered[df_filtered["Risk"].astype(str).str.contains("high",case=False)]
-    if len(hr)>0:
-        if st.button("Analyze Root Cause"):
-            ans,_=ask_ai(hr.head(30).to_csv(index=False))
-            st.write(ans)
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[{"role":"user","content":f"Analyze:\n{sample}\nQuestion:{q}"}]
+    )
 
-# ---------------- PDF ----------------
-if st.button("📄 Report"):
-    pdf=FPDF(); pdf.add_page(); pdf.set_font("Arial",size=10)
-    pdf.multi_cell(0,6,"HSE Report Generated")
-    path=tempfile.NamedTemporaryFile(delete=False).name
-    pdf.output(path)
-    with open(path,"rb") as f:
-        st.download_button("Download",f,"report.pdf")
+    st.write(response.choices[0].message.content)
+
+# ---------------- DATA PREVIEW ----------------
+st.subheader("📄 Filtered Data")
+st.dataframe(df_filtered.head(50))
