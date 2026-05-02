@@ -65,7 +65,7 @@ if not st.session_state.authenticated:
 col1, col2 = st.sidebar.columns([1,1])
 with col1:
     if os.path.exists("logo.png"):
-        st.image("logo.png", use_column_width=True)
+        st.image("https://upload.wikimedia.org/wikipedia/en/0/0d/Alexandria_University_logo.png", width=120)
 with col2:
     if os.path.exists("جامعة-الإسكندرية-مصر.png"):
         st.image("جامعة-الإسكندرية-مصر.png", use_column_width=True)
