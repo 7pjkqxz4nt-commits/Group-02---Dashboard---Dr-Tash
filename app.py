@@ -64,14 +64,31 @@ if not st.session_state.authenticated:
         else:
             st.error("Invalid credentials")
     st.stop()
-# ---------------- SIDEBAR LOGO ----------------
-st.sidebar.image("logo.png", use_column_width=True)
+# ---------------- SIDEBAR LOGOS ----------------
+col1, col2 = st.sidebar.columns([1,1])
+with col1:
+    st.image("logo.png", use_column_width=True)  # OSHE Master logo
+with col2:
+    st.image("جامعة-الإسكندرية-مصر.png", use_column_width=True)  # University logo
 
 st.sidebar.markdown("""
     <div style="text-align:center; color:white; font-size:14px; font-weight:bold;">
-    OSHE Master – HSE Dashboard
+    OSHE Master – HSE Dashboard<br>
+    University of Alexandria – Egypt
     </div>
 """, unsafe_allow_html=True)
+# ---------------- FOOTER LOGOS ----------------
+st.markdown("""
+    <hr style="border:1px solid #FFD700;">
+    <div style="text-align:center;">
+        <img src="logo.png" width="100">
+        <img src="جامعة-الإسكندرية-مصر.png" width="100" style="margin-left:20px;">
+        <p style="color:white; font-size:12px;">
+        © 2026 OSHE Master – HSE Dashboard | University of Alexandria
+        </p>
+    </div>
+""", unsafe_allow_html=True)
+
 
 # ---------------- FILE UPLOAD ----------------
 st.sidebar.header("📂 Upload Data")
