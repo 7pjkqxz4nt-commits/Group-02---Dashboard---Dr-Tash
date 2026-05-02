@@ -9,13 +9,8 @@ import numpy as np
 
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="OSHE Master", layout="wide")
-from openai import OpenAI
-
-client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
-
-# ✅ HERE
-if st.button("Test AI"):
-    ...
+if question:
+    st.warning("⚠️ AI temporarily unavailable (quota exceeded)")
 
 # ---------------- BRIGHT UI ----------------
 st.markdown("""
