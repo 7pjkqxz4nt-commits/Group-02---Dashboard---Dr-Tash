@@ -1,207 +1,132 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import re
-from datetime import datetime
+from fpdf import FPDF
+import tempfile
 
-st.set_page_config(page_title="OSHE Master", layout="wide")
+st.set_page_config(layout="wide")
 
-# ---------------- GLOBAL STYLE ----------------
+# ---------------- STYLE ----------------
 st.markdown("""
 <style>
-
-/* Background */
-.stApp {
-    background: linear-gradient(to right, #203a43, #2c5364);
-    color: white;
-}
-
-/* Sidebar */
-section[data-testid="stSidebar"] {
-    background: #1c2b36;
-}
-
-/* Cards */
-.card {
-    background: white;
-    color: black;
-    padding: 20px;
-    border-radius: 15px;
-    box-shadow: 0px 5px 15px rgba(0,0,0,0.2);
-    margin-bottom: 20px;
-}
-
-/* Buttons */
-.stButton>button {
-    background-color: #f1c40f;
-    color: black;
-    font-weight: bold;
-    border-radius: 8px;
-}
-
-/* Header */
-.header {
-    text-align: center;
-    margin-bottom: 20px;
-}
-
-/* Footer */
-.footer {
-    text-align: center;
-    margin-top: 40px;
-    font-size: 12px;
-    color: #ccc;
-}
-
+.stApp {background: linear-gradient(to right,#203a43,#2c5364);color:white;}
+.card {background:white;color:black;padding:20px;border-radius:12px;margin-bottom:15px;}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- SESSION ----------------
+# ---------------- LOGIN ----------------
 if "auth" not in st.session_state:
     st.session_state.auth = False
 
-# ---------------- LOGIN ----------------
 if not st.session_state.auth:
-
     st.markdown("""
-    <div style="width:400px;margin:auto;margin-top:100px;
-    background:white;color:black;padding:30px;border-radius:15px;text-align:center;">
-    
+    <div style="text-align:center;margin-top:100px;background:white;color:black;padding:30px;border-radius:15px;width:400px;margin:auto;">
     <img src="https://upload.wikimedia.org/wikipedia/en/0/0d/Alexandria_University_logo.png" width="80">
     <h2>OSHE Master</h2>
     <p>HSE Dashboard</p>
-    """, unsafe_allow_html=True)
-
-    user = st.text_input("Username")
-    pwd = st.text_input("Password", type="password")
-
-    if st.button("Login"):
-        if user == "admin" and pwd == "1234":
-            st.session_state.auth = True
-            st.rerun()
-        else:
-            st.error("Invalid credentials")
-
-    st.markdown("""
-    <hr>
-    <b>Prepared by</b><br>
-    Dina Mohamed, Samar Zaiton, Mohamed Gamal,<br>
-    Ahmed Badawy, Hazem Hashem,<br>
-    Ahmed Abd Elrheem, Mohamed Abd Elrazek, Amir Salem
     </div>
     """, unsafe_allow_html=True)
 
+    u = st.text_input("Username")
+    p = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if u == "admin" and p == "1234":
+            st.session_state.auth = True
+            st.rerun()
+        else:
+            st.error("Invalid login")
     st.stop()
 
-# ---------------- SIDEBAR ----------------
-st.sidebar.image(
-    "https://upload.wikimedia.org/wikipedia/en/0/0d/Alexandria_University_logo.png",
-    width=120
-)
+# ---------------- SIDEBAR FILTERS ----------------
+st.sidebar.title("📊 Filters")
 
-st.sidebar.markdown("### 🛡️ OSHE Master")
-st.sidebar.markdown("HSE Dashboard")
-
-st.sidebar.markdown("---")
-file = st.sidebar.file_uploader("📂 Upload Data", type=["csv", "xlsx"])
-
-# ---------------- HEADER ----------------
-st.markdown("""
-<div class="header">
-<h1>🛡️ OSHE Master Dashboard</h1>
-<p>University of Alexandria - Egypt</p>
-</div>
-""", unsafe_allow_html=True)
+file = st.sidebar.file_uploader("Upload Data", type=["csv","xlsx"])
 
 df = pd.DataFrame()
 
-# ---------------- LOAD DATA ----------------
 if file:
     df = pd.read_csv(file) if file.name.endswith(".csv") else pd.read_excel(file)
 
-    st.success("✅ Data uploaded successfully")
+    df.columns = df.columns.str.strip()
 
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader("📂 Data Preview")
-    st.write(df.head())
-    st.markdown('</div>', unsafe_allow_html=True)
+    # Filters
+    if "Location" in df.columns:
+        loc = st.sidebar.multiselect("Location", df["Location"].unique())
+        if loc:
+            df = df[df["Location"].isin(loc)]
+
+    if "Risk" in df.columns:
+        risk = st.sidebar.multiselect("Risk", df["Risk"].unique())
+        if risk:
+            df = df[df["Risk"].isin(risk)]
+
+# ---------------- HEADER ----------------
+st.title("🛡️ HSE KPI Dashboard")
 
 # ---------------- KPIs ----------------
 if not df.empty:
 
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader("📊 KPIs")
+    H = df.get("Hours Worked", pd.Series([0])).sum()
+    R = df.get("Recordable Incidents", pd.Series([0])).sum()
+    LTI = df.get("Lost Time Injuries", pd.Series([0])).sum()
+    Lost_days = df.get("Lost Days", pd.Series([0])).sum()
 
-    col1, col2, col3 = st.columns(3)
+    TRIR = (R * 200000) / H if H else 0
+    LTIFR = (LTI * 1000000) / H if H else 0
+    SR = (Lost_days * 200000) / H if H else 0
 
-    col1.metric("Total Records", len(df))
+    def benchmark(val, good, avg):
+        if val <= good: return "🟢 Good"
+        elif val <= avg: return "🟡 Avg"
+        else: return "🔴 Poor"
 
-    if "Severity" in df.columns:
-        col2.metric("Unique Severity", df["Severity"].nunique())
-
-    if "Risk" in df.columns:
-        col3.metric("Unique Risk Levels", df["Risk"].nunique())
-
-    st.markdown('</div>', unsafe_allow_html=True)
+    col1,col2,col3 = st.columns(3)
+    col1.metric("TRIR", round(TRIR,2), benchmark(TRIR,1,3))
+    col2.metric("LTIFR", round(LTIFR,2), benchmark(LTIFR,0.5,1.5))
+    col3.metric("Severity Rate", round(SR,2), benchmark(SR,50,200))
 
 # ---------------- CHARTS ----------------
 if not df.empty:
 
-    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("📈 Charts")
 
-    for col in df.select_dtypes(include="object").columns[:3]:
-        fig = px.histogram(df, x=col, title=f"{col} Distribution",
-                           color_discrete_sequence=["#f1c40f"])
+    if "Risk" in df.columns:
+        fig = px.histogram(df, x="Risk", color="Risk")
         st.plotly_chart(fig, use_container_width=True)
 
-    if "Date" in df.columns:
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-        num_cols = df.select_dtypes(include="number").columns
+    if "Hazard Type" in df.columns:
+        fig2 = px.pie(df, names="Hazard Type")
+        st.plotly_chart(fig2, use_container_width=True)
 
-        if len(num_cols) > 0:
-            fig2 = px.line(df, x="Date", y=num_cols[0],
-                           title="Trend Over Time",
-                           color_discrete_sequence=["#e67e22"])
-            st.plotly_chart(fig2, use_container_width=True)
+# ---------------- AI ASSISTANT ----------------
+st.subheader("🤖 AI Assistant")
 
-    st.markdown('</div>', unsafe_allow_html=True)
+question = st.text_input("Ask about your data")
 
-# ---------------- Q&A ----------------
-query = st.text_input("💬 Ask a question about incidents")
+if question and not df.empty:
+    if "Risk" in df.columns:
+        high = df["Risk"].astype(str).str.contains("high", case=False).sum()
+        st.write(f"High risk cases: {high}")
 
-if not df.empty and query:
+    if "Hazard Type" in df.columns:
+        st.write("Most common hazard:", df["Hazard Type"].mode()[0])
 
-    filtered_df = df.copy()
+# ---------------- PDF REPORT ----------------
+if not df.empty and st.button("📄 Generate PDF Report"):
 
-    if "Location" in df.columns:
-        for loc in df["Location"].unique():
-            if str(loc).lower() in query.lower():
-                filtered_df = filtered_df[filtered_df["Location"] == loc]
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
 
-    year_match = re.findall(r"\b(20\d{2})\b", query)
-    if year_match and "Date" in df.columns:
-        filtered_df = filtered_df[
-            pd.to_datetime(filtered_df["Date"], errors="coerce").dt.year == int(year_match[0])
-        ]
+    pdf.cell(200,10,"HSE Report",ln=True)
 
-    if not filtered_df.empty:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.subheader("🔎 Results")
-        st.dataframe(filtered_df)
+    pdf.cell(200,10,f"TRIR: {round(TRIR,2)}",ln=True)
+    pdf.cell(200,10,f"LTIFR: {round(LTIFR,2)}",ln=True)
+    pdf.cell(200,10,f"Severity Rate: {round(SR,2)}",ln=True)
 
-        if "Hazard Type" in filtered_df.columns:
-            fig = px.bar(filtered_df, x="Hazard Type",
-                         color_discrete_sequence=["#f1c40f"])
-            st.plotly_chart(fig, use_container_width=True)
+    file_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
+    pdf.output(file_path)
 
-        st.markdown('</div>', unsafe_allow_html=True)
-    else:
-        st.warning("No matching results")
-
-# ---------------- FOOTER ----------------
-st.markdown("""
-<div class="footer">
-© 2026 OSHE Master – HSE Dashboard | University of Alexandria
-</div>
-""", unsafe_allow_html=True)
+    with open(file_path, "rb") as f:
+        st.download_button("Download Report", f, "HSE_Report.pdf")
