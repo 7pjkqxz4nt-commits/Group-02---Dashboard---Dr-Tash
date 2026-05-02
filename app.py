@@ -28,8 +28,37 @@ def ask_ai(prompt):
 # ---------------- UI ----------------
 st.markdown("""
 <style>
-.stApp {background:#f5f7fb;color:#2c3e50;}
-.card {background:white;padding:20px;border-radius:10px;margin-bottom:15px;}
+
+/* Global */
+.stApp {
+    background-color: #f4f6f9;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: #ffffff;
+    border-right: 1px solid #ddd;
+}
+
+/* KPI Cards */
+.kpi-card {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0px 2px 6px rgba(0,0,0,0.08);
+    text-align: center;
+}
+
+/* Titles */
+h1, h2, h3 {
+    color: #1f4e79;
+}
+
+/* Buttons */
+button {
+    border-radius: 8px !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -59,12 +88,82 @@ if not st.session_state.auth:
 
 # ---------------- SIDEBAR ----------------
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/en/0/0d/Alexandria_University_logo.png", width=120)
-file = st.sidebar.file_uploader("Upload Data", type=["csv","xlsx"])
 
-st.title("🛡️ OSHE Master Dashboard")
+st.sidebar.markdown("## 🛡️ OSHE Master")
+st.sidebar.markdown("HSE Intelligence Platform")
 
-df = pd.DataFrame()
+file = st.sidebar.file_uploader("📂 Upload Data", type=["csv","xlsx"])
 
+st.sidebar.markdown("---")
+st.sidebar.markdown("👤 User: Admin")
+
+# ---------------- FILTERS ----------------
+
+df_filtered = df.copy()
+
+if not df.empty:
+
+    st.sidebar.markdown("### 🎛 Filters")
+
+    # -------- DATE FILTER --------
+    date_col = None
+    for col in df.columns:
+        if "date" in col.lower():
+            date_col = col
+            break
+
+    if date_col:
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+
+        min_date = df[date_col].min()
+        max_date = df[date_col].max()
+
+        date_range = st.sidebar.date_input(
+            "Select Date Range",
+            [min_date, max_date]
+        )
+
+        if len(date_range) == 2:
+            df_filtered = df_filtered[
+                (df_filtered[date_col] >= pd.to_datetime(date_range[0])) &
+                (df_filtered[date_col] <= pd.to_datetime(date_range[1]))
+            ]
+
+    # -------- LOCATION FILTER --------
+    if "Location" in df.columns:
+        locations = st.sidebar.multiselect(
+            "Select Location",
+            df["Location"].dropna().unique()
+        )
+
+        if locations:
+            df_filtered = df_filtered[df_filtered["Location"].isin(locations)]
+
+    # -------- RISK FILTER --------
+    if "Risk" in df.columns:
+        risks = st.sidebar.multiselect(
+            "Select Risk Level",
+            df["Risk"].dropna().unique()
+        )
+
+        if risks:
+            df_filtered = df_filtered[df_filtered["Risk"].isin(risks)]
+
+    # -------- HAZARD FILTER --------
+    if "Hazard Type" in df.columns:
+        hazards = st.sidebar.multiselect(
+            "Select Hazard",
+            df["Hazard Type"].dropna().unique()
+        )
+
+        if hazards:
+            df_filtered = df_filtered[df_filtered["Hazard Type"].isin(hazards)]
+
+    # -------- SHOW FILTERED DATA --------
+    st.sidebar.markdown(f"📊 Records after filter: {len(df_filtered)}")
+
+else:
+    df_filtered = df
 # ---------------- LOAD DATA ----------------
 if file:
     try:
@@ -86,9 +185,11 @@ def detect_column(keys):
 def safe_sum(col):
     return pd.to_numeric(df[col], errors="coerce").sum() if col else 0
 
-# ---------------- KPI ----------------
+# ---------------- ENTERPRISE DASHBOARD ----------------
+
 if not df.empty:
 
+    # -------- KPI CALCULATION --------
     hours = detect_column(["hours"])
     incidents = detect_column(["incident"])
     lti = detect_column(["lost time"])
@@ -104,15 +205,8 @@ if not df.empty:
     LTIFR = (LTI*1000000)/H if H else 0
     SR = (LD*200000)/H if H else 0
 
-    st.subheader("📊 KPI Dashboard")
-    c1,c2,c3 = st.columns(3)
-    c1.metric("TRIR", round(TRIR,2))
-    c2.metric("LTIFR", round(LTIFR,2))
-    c3.metric("Severity", round(SR,2))
-
-    # ---------------- GAUGES ----------------
-    st.subheader("🎯 KPI Gauges")
-
+    # -------- GAUGE FUNCTION --------
+    import plotly.graph_objects as go
     def gauge(v,title,maxv):
         return go.Figure(go.Indicator(
             mode="gauge+number",
@@ -124,10 +218,113 @@ if not df.empty:
                             {'range':[maxv*0.7,maxv],'color':'red'}]}
         ))
 
-    g1,g2,g3 = st.columns(3)
-    g1.plotly_chart(gauge(TRIR,"TRIR",5),use_container_width=True)
-    g2.plotly_chart(gauge(LTIFR,"LTIFR",3),use_container_width=True)
-    g3.plotly_chart(gauge(SR,"Severity",300),use_container_width=True)
+    # -------- TABS --------
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Executive Dashboard",
+        "📈 Analysis",
+        "🤖 AI Insights",
+        "🧠 Audit & Investigation"
+    ])
+
+    # ================= TAB 1 =================
+    with tab1:
+
+        st.subheader("📊 KPI Overview")
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("TRIR", round(TRIR,2))
+        c2.metric("LTIFR", round(LTIFR,2))
+        c3.metric("Severity", round(SR,2))
+
+        st.subheader("🎯 KPI Gauges")
+
+        g1, g2, g3 = st.columns(3)
+        g1.plotly_chart(gauge(TRIR,"TRIR",5), use_container_width=True)
+        g2.plotly_chart(gauge(LTIFR,"LTIFR",3), use_container_width=True)
+        g3.plotly_chart(gauge(SR,"Severity",300), use_container_width=True)
+
+    # ================= TAB 2 =================
+    with tab2:
+
+        st.subheader("📈 Analysis")
+
+        if "Hazard Type" in df.columns:
+            st.plotly_chart(px.pie(df, names="Hazard Type"), use_container_width=True)
+
+        if "Risk" in df.columns:
+            st.plotly_chart(px.histogram(df, x="Risk"), use_container_width=True)
+
+        if "Location" in df.columns and "Hazard Type" in df.columns:
+            heat = pd.crosstab(df["Location"], df["Hazard Type"])
+            st.plotly_chart(px.imshow(heat, text_auto=True), use_container_width=True)
+
+        # Trend
+        if date_col and incidents:
+            temp = df.copy()
+            temp[date_col] = pd.to_datetime(temp[date_col], errors="coerce")
+            trend = temp.groupby(date_col)[incidents].sum().reset_index()
+            st.plotly_chart(px.line(trend, x=date_col, y=incidents), use_container_width=True)
+
+    # ================= TAB 3 =================
+    with tab3:
+
+        st.subheader("🤖 AI Insights")
+
+        q = st.text_input("Ask about your data")
+
+        if q:
+            sample = df.head(50).to_csv(index=False)
+            prompt = f"Analyze:\n{sample}\nQuestion:{q}"
+
+            ans, ok = ask_ai(prompt)
+
+            if ok:
+                st.success(ans)
+            else:
+                st.warning(ans)
+
+    # ================= TAB 4 =================
+    with tab4:
+
+        st.subheader("🧠 Root Cause")
+
+        if "Risk" in df.columns:
+            hr = df[df["Risk"].astype(str).str.contains("high", case=False)]
+
+            if len(hr) > 0:
+                if st.button("Analyze Root Cause"):
+                    sample = hr.head(30).to_csv(index=False)
+                    ans, ok = ask_ai("Root cause:\n" + sample)
+                    st.write(ans if ok else "Basic: improve controls")
+
+        st.subheader("📋 Checklist")
+
+        if "Hazard Type" in df.columns:
+            hazards = df["Hazard Type"].dropna().unique()
+            checklist = [{"Hazard": h, "Check": f"Control for {h}"} for h in hazards]
+            st.dataframe(pd.DataFrame(checklist))
+
+        st.subheader("📄 Report")
+
+        if st.button("Generate Report"):
+            sample = df.head(50).to_csv(index=False)
+            report, ok = ask_ai("Report:\n" + sample)
+
+            if not ok:
+                report = "Basic report"
+
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", size=10)
+
+            for l in report.split("\n"):
+                pdf.multi_cell(0,6,l)
+
+            path = tempfile.NamedTemporaryFile(delete=False).name
+            pdf.output(path)
+
+            with open(path, "rb") as f:
+                st.download_button("Download Report", f, "report.pdf")
 
 # ---------------- CHARTS ----------------
 if not df.empty:
