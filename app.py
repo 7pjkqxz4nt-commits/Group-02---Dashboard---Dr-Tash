@@ -163,7 +163,7 @@ else:
     st.sidebar.markdown(f"📊 Records after filter: {len(df_filtered)}")
 
 else:
-    df_filtered = df
+   df_filtered = df.copy()
 
 
 # ---------------- HELPERS ----------------
