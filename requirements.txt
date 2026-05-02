@@ -4,3 +4,4 @@ plotly
 fpdf
 openai
 openpyxl
+scikit-learn
