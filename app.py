@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import re
 from fpdf import FPDF
 import tempfile
 from openai import OpenAI
@@ -9,31 +8,33 @@ from openai import OpenAI
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="OSHE Master", layout="wide")
 
-# ---------------- OPENAI ----------------
 client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
 
-# ---------------- STYLE ----------------
+# ---------------- BRIGHT STYLE ----------------
 st.markdown("""
 <style>
 .stApp {
-    background: linear-gradient(to right, #203a43, #2c5364);
-    color: white;
+    background-color: #f5f7fb;
+    color: #2c3e50;
 }
 section[data-testid="stSidebar"] {
-    background: #1c2b36;
+    background: #ffffff;
+    border-right: 1px solid #ddd;
 }
 .card {
     background: white;
-    color: black;
     padding: 20px;
     border-radius: 12px;
+    box-shadow: 0px 2px 8px rgba(0,0,0,0.08);
     margin-bottom: 15px;
+}
+h1, h2, h3 {
+    color: #1f4e79;
 }
 .footer {
     text-align: center;
     margin-top: 40px;
-    color: #ccc;
-    font-size: 12px;
+    color: gray;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -45,11 +46,12 @@ if "auth" not in st.session_state:
 if not st.session_state.auth:
 
     st.markdown("""
-    <div style="width:400px;margin:auto;margin-top:100px;
-    background:white;color:black;padding:30px;border-radius:15px;text-align:center;">
+    <div style="width:420px;margin:auto;margin-top:100px;
+    background:white;padding:30px;border-radius:15px;text-align:center;
+    box-shadow:0px 5px 15px rgba(0,0,0,0.1);">
     
     <img src="https://upload.wikimedia.org/wikipedia/en/0/0d/Alexandria_University_logo.png" width="80">
-    <h2>OSHE Master</h2>
+    <h2 style="color:#1f4e79;">OSHE Master</h2>
     <p>HSE KPI Dashboard</p>
     """, unsafe_allow_html=True)
 
@@ -90,16 +92,24 @@ st.title("🛡️ OSHE Master Dashboard")
 
 df = pd.DataFrame()
 
-# ---------------- LOAD DATA ----------------
+# ---------------- LOAD DATA (FIXED) ----------------
 if file:
-    df = pd.read_csv(file) if file.name.endswith(".csv") else pd.read_excel(file)
+    try:
+        if file.name.endswith(".csv"):
+            df = pd.read_csv(file)
+        else:
+            df = pd.read_excel(file, engine="openpyxl")
 
-    st.success("✅ Data uploaded successfully")
+        st.success("✅ Data uploaded successfully")
 
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader("📂 Data Preview")
-    st.write(df.head())
-    st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.subheader("📂 Data Preview")
+        st.write(df.head())
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    except Exception as e:
+        st.error(f"Error reading file: {e}")
+        st.stop()
 
 # ---------------- KPIs ----------------
 if not df.empty:
@@ -113,70 +123,51 @@ if not df.empty:
     LTIFR = (LTI * 1000000) / H if H else 0
     SR = (Lost_days * 200000) / H if H else 0
 
-    def benchmark(val, good, avg):
-        if val <= good: return "🟢 Good"
-        elif val <= avg: return "🟡 Avg"
-        else: return "🔴 Poor"
-
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-
     col1, col2, col3 = st.columns(3)
-    col1.metric("TRIR", round(TRIR,2), benchmark(TRIR,1,3))
-    col2.metric("LTIFR", round(LTIFR,2), benchmark(LTIFR,0.5,1.5))
-    col3.metric("Severity Rate", round(SR,2), benchmark(SR,50,200))
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    col1.metric("TRIR", round(TRIR,2))
+    col2.metric("LTIFR", round(LTIFR,2))
+    col3.metric("Severity Rate", round(SR,2))
 
 # ---------------- CHARTS ----------------
 if not df.empty:
 
-    st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("📈 Charts")
 
     if "Risk" in df.columns:
-        st.plotly_chart(px.histogram(df, x="Risk", color="Risk"), use_container_width=True)
+        st.plotly_chart(px.histogram(df, x="Risk"), use_container_width=True)
 
     if "Hazard Type" in df.columns:
         st.plotly_chart(px.pie(df, names="Hazard Type"), use_container_width=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# ---------------- AI ASSISTANT ----------------
+# ---------------- AI ----------------
 st.subheader("🤖 AI Assistant")
 
 question = st.text_input("Ask about your data")
 
 if question and not df.empty:
-
     sample = df.head(50).to_csv(index=False)
 
     prompt = f"""
-You are an HSE expert.
+Analyze this HSE dataset:
 
-Dataset:
 {sample}
 
-Question:
-{question}
-
-Provide insights and recommendations.
+Question: {question}
+Give insights and recommendations.
 """
 
     try:
         response = client.chat.completions.create(
             model="gpt-4.1-mini",
-            messages=[
-                {"role": "system", "content": "You are an HSE expert."},
-                {"role": "user", "content": prompt}
-            ]
+            messages=[{"role":"user","content":prompt}]
         )
         st.write(response.choices[0].message.content)
-
     except Exception as e:
-        st.error(f"AI Error: {e}")
+        st.error(e)
 
 # ---------------- PDF ----------------
-if not df.empty and st.button("📄 Generate PDF Report"):
+if not df.empty and st.button("📄 Generate PDF"):
 
     pdf = FPDF()
     pdf.add_page()
@@ -184,14 +175,12 @@ if not df.empty and st.button("📄 Generate PDF Report"):
 
     pdf.cell(200,10,"HSE Report",ln=True)
     pdf.cell(200,10,f"TRIR: {round(TRIR,2)}",ln=True)
-    pdf.cell(200,10,f"LTIFR: {round(LTIFR,2)}",ln=True)
-    pdf.cell(200,10,f"Severity Rate: {round(SR,2)}",ln=True)
 
-    file_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
+    file_path = tempfile.NamedTemporaryFile(delete=False).name
     pdf.output(file_path)
 
     with open(file_path, "rb") as f:
-        st.download_button("Download Report", f, "HSE_Report.pdf")
+        st.download_button("Download PDF", f, "report.pdf")
 
 # ---------------- FOOTER ----------------
 st.markdown("""
